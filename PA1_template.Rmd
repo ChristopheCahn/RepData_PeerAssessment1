@@ -1,0 +1,119 @@
+---
+title: "RepData_PeerAssessment1"
+author: "Christophe Cahn"
+date: "23 janvier 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading libraries
+
+```{r library loading, echo=TRUE}
+library(dplyr)
+library(data.table)
+library(ggplot2)
+```
+
+## Loading and preprocessing the data
+
+```{r loading data, echo=TRUE}
+data <- read.csv("./data/activity.csv", header = TRUE, sep = ",")
+data$date <- as.Date(data$date)
+data <- tbl_df(data)
+```
+
+## What is mean total number of steps taken per day?
+
+We now compute the number of steps by day, using the 'summarise()' function.
+```{r grouping per day, echo=TRUE}
+daily <- group_by(data, date)
+(per_day   <- summarise(daily, steps = sum(steps,na.rm = TRUE)))
+```
+
+```{r histogram 1, echo=TRUE}
+hist(per_day$steps, breaks = 15)
+rug(per_day$steps)
+```
+
+```{r, echo=TRUE}
+mean(per_day$steps, na.rm = TRUE)
+median(per_day$steps, na.rm = TRUE)
+```
+
+## What is the average daily activity pattern?
+
+We first need to compute average over 5-minute interval.
+```{r, echo=TRUE}
+inter <- group_by(data, interval)
+(per_interval <- summarise(inter, steps = mean(steps,na.rm = TRUE)))
+plot(per_interval$interval,per_interval$steps, type = "l")
+nb.step.max=max(per_interval$steps,na.rm=TRUE)
+filter(per_interval,steps==nb.step.max)$interval
+```
+
+Seems to be the 835 interval.
+
+## Imputing missing values
+
+```{r, echo=TRUE}
+dim(filter(data,is.na(steps)))
+```
+
+Then, we find 2,304 NA values.
+
+To fill the NA, we'll use the average value for the correpsonding 5-minute interval. We use the merge function for this purpose.
+
+```{r, echo=TRUE}
+m <- merge(data,per_interval,by="interval")
+m2 <- mutate(m,steps=steps.x)
+m2 <- tbl_df(m2)
+m2$steps[is.na(m2$steps.x)] <- m2$steps.y[is.na(m2$steps.x)]
+newdata <- arrange(select(m2,steps,date,interval),date)
+```
+
+The dataset 'newdata' is then equal to the original dataset but with the missing data filled in.
+
+```{r, echo=TRUE}
+by_day <- group_by(newdata, date)
+steps_per_day <- summarise(by_day,steps = sum(steps))
+```
+
+```{r, echo=TRUE}
+hist(steps_per_day$steps, breaks = 15)
+rug(steps_per_day$steps)
+```
+
+```{r, echo=TRUE}
+mean(steps_per_day$steps)
+median(steps_per_day$steps)
+```
+
+The cleaning operation has an impact on the mean and median of the new distribution.
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+Let's identify the weekdays.
+
+```{r weekdays identification, echo=TRUE}
+Sys.setlocale("LC_TIME", "en_US.UTF-8")
+kub <- mutate(newdata,day=weekdays(date))
+kub$day[kub$day=="Saturday" | kub$day=="Sunday"] <- "weekend" 
+kub$day[kub$day!="weekend"] <- "weekday" 
+kub$day <- factor(kub$day)
+table(kub$day)
+```
+
+We then compute average for weekdays and weekends.
+```{r computing average over factors, echo=TRUE}
+step_weekdays <- summarise(group_by(filter(kub,day=="weekday"),interval), steps = mean(steps))
+step_weekends <- summarise(group_by(filter(kub,day=="weekend"),interval), steps = mean(steps))
+```
+Now the plots :
+```{r plotting panel, echo=TRUE}
+par(mfrow=c(2,1))
+plot(step_weekdays, type = "l", main = "Weekdays", col="blue")
+plot(step_weekends,type = "l", main = "Weekends", col="red")
+```
